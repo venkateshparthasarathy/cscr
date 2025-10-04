@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import { CheckCircle, Cancel, QrCodeScanner, CameraAlt, Videocam, Smartphone, Close, Refresh } from '@mui/icons-material';
 import axios from 'axios';
+import jsQR from 'jsqr';
 
 const Scanner = () => {
   const [scanResult, setScanResult] = useState('');
@@ -35,16 +36,21 @@ const Scanner = () => {
   const [cameraPermission, setCameraPermission] = useState('prompt');
   const [showCameraHelp, setShowCameraHelp] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanner, setScanner] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [scanDebug, setScanDebug] = useState('');
   const [manualEmail, setManualEmail] = useState('');
   const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const animationFrameRef = useRef(null);
+
   // Check camera support
   useEffect(() => {
     checkCameraSupport();
+    return () => stopScanner();
   }, []);
 
   // Load email suggestions when component mounts
@@ -113,51 +119,32 @@ const Scanner = () => {
     setScanDebug('Starting scanner...');
 
     try {
-      if (!window.Html5QrcodeScanner) {
-        setCameraError('Barcode scanner library not loaded. Please refresh the page.');
-        setIsLoading(false);
-        return;
+      // Stop any existing scanner
+      await stopScanner();
+
+      const constraints = {
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
       }
 
-      if (scanner) {
-        await scanner.clear();
-        setScanner(null);
-      }
-
-      const html5QrcodeScanner = new window.Html5QrcodeScanner(
-        "reader",
-        {
-          fps: 10,
-          qrbox: { width: 300, height: 200 },
-          rememberLastUsedCamera: true,
-          supportedScanTypes: [
-            window.Html5QrcodeScanType.SCAN_TYPE_QR_CODE,
-            window.Html5QrcodeScanType.SCAN_TYPE_CODE_128,
-            window.Html5QrcodeScanType.SCAN_TYPE_CODE_39,
-            window.Html5QrcodeScanType.SCAN_TYPE_CODE_93,
-            window.Html5QrcodeScanType.SCAN_TYPE_EAN_8,
-            window.Html5QrcodeScanType.SCAN_TYPE_EAN_13
-          ]
-        },
-        false
-      );
-
-      setScanner(html5QrcodeScanner);
       setIsScanning(true);
+      setCameraPermission('granted');
       setScanDebug('Scanner started. Point camera at barcode...');
 
-      html5QrcodeScanner.render(
-        (decodedText, decodedResult) => {
-          setScanDebug(`Scanned: ${decodedText} (Format: ${decodedResult?.result?.format?.formatName})`);
-          handleScanResult(decodedText);
-        },
-        (errorMessage) => {
-          console.log('Scan error (continuing):', errorMessage);
-          setScanDebug(`Scan error: ${errorMessage}. Keep trying...`);
-        }
-      );
+      // Start scanning loop
+      scanFrame();
 
-      setCameraPermission('granted');
     } catch (err) {
       console.error('Scanner error:', err);
       handleCameraError(err);
@@ -167,17 +154,50 @@ const Scanner = () => {
     }
   };
 
-  const stopScanner = async () => {
-    try {
-      if (scanner) {
-        await scanner.clear();
-        setScanner(null);
+  const scanFrame = () => {
+    if (!isScanning || !videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code) {
+        setScanDebug(`Scanned: ${code.data}`);
+        handleScanResult(code.data);
       }
-      setIsScanning(false);
-      setScanDebug('Scanner stopped');
-    } catch (error) {
-      console.error('Error stopping scanner:', error);
     }
+
+    if (isScanning) {
+      animationFrameRef.current = requestAnimationFrame(scanFrame);
+    }
+  };
+
+  const stopScanner = async () => {
+    setIsScanning(false);
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setScanDebug('Scanner stopped');
   };
 
   const handleCameraError = (error) => {
@@ -215,6 +235,7 @@ const Scanner = () => {
       setSuccess('Barcode scanned successfully!');
       setTimeout(() => setSuccess(''), 3000);
       checkParticipant(decodedText);
+      stopScanner(); // Stop after successful scan
     } else {
       setError('Scanned code does not appear to be a valid email address');
       setScanDebug(`Invalid format: ${decodedText}`);
@@ -226,7 +247,7 @@ const Scanner = () => {
     if (emailToCheck && emailToCheck.includes('@')) {
       setScanResult(emailToCheck);
       checkParticipant(emailToCheck);
-      if (!email) setManualEmail(''); // Clear only if not from autocomplete selection
+      if (!email) setManualEmail('');
     } else {
       setError('Please enter a valid email address');
     }
@@ -285,40 +306,27 @@ const Scanner = () => {
     );
   };
 
-  // Cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      if (scanner) {
-        try {
-          scanner.clear();
-        } catch (error) {
-          console.error('Error cleaning up scanner:', error);
-        }
-      }
-    };
-  }, [scanner]);
-
   const CameraHelpDialog = () => (
     <Dialog open={showCameraHelp} onClose={() => setShowCameraHelp(false)} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center">
           <CameraAlt sx={{ mr: 1 }} />
-          Barcode Scanner Help
+          Scanner Help
         </Box>
       </DialogTitle>
       <DialogContent>
         <Typography variant="h6" gutterBottom>
-          Scanner Not Reading Barcodes?
+          Barcode Scanner
         </Typography>
-        
+
         <List>
           <ListItem>
             <ListItemIcon>
               <Smartphone />
             </ListItemIcon>
             <ListItemText 
-              primary="Use HTTPS" 
-              secondary="Camera requires HTTPS. Use ngrok for local testing: 'ngrok http 3000'"
+              primary="Camera Access" 
+              secondary="Ensure you allow camera permissions when prompted"
             />
           </ListItem>
           
@@ -328,7 +336,7 @@ const Scanner = () => {
             </ListItemIcon>
             <ListItemText 
               primary="Good Lighting" 
-              secondary="Ensure the barcode is well-lit without glare or shadows"
+              secondary="Ensure the barcode is well-lit without glare"
             />
           </ListItem>
           
@@ -337,8 +345,8 @@ const Scanner = () => {
               <QrCodeScanner />
             </ListItemIcon>
             <ListItemText 
-              primary="Steady Position" 
-              secondary="Hold the camera steady 6-12 inches from the barcode"
+              primary="Use HTTPS" 
+              secondary="Camera requires HTTPS. Use ngrok for local testing"
             />
           </ListItem>
 
@@ -347,22 +355,16 @@ const Scanner = () => {
               <Refresh />
             </ListItemIcon>
             <ListItemText 
-              primary="Manual Entry Available" 
-              secondary="Use the email autocomplete to quickly find participants"
+              primary="Manual Entry" 
+              secondary="Use the email autocomplete for quick manual entry"
             />
           </ListItem>
         </List>
-
-        <Alert severity="info" sx={{ mt: 2 }}>
-          <Typography variant="body2">
-            <strong>Tip:</strong> Use the email autocomplete feature for quick manual entry when scanning fails.
-          </Typography>
-        </Alert>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setShowCameraHelp(false)}>Close</Button>
         <Button onClick={startScanner} variant="contained">
-          Try Scanner Again
+          Try Scanner
         </Button>
       </DialogActions>
     </Dialog>
@@ -442,16 +444,21 @@ const Scanner = () => {
               {/* Scanner Container */}
               {isScanning && (
                 <Box sx={{ mb: 2, position: 'relative' }}>
-                  <Box 
-                    id="reader"
-                    sx={{ 
+                  <video
+                    ref={videoRef}
+                    style={{ 
                       width: '100%',
-                      minHeight: '300px',
+                      height: '300px',
                       border: '2px solid #1976d2',
                       borderRadius: 1,
-                      overflow: 'hidden',
                       backgroundColor: '#000'
                     }}
+                    playsInline
+                    muted
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    style={{ display: 'none' }}
                   />
                   <Box 
                     sx={{ 
