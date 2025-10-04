@@ -19,23 +19,10 @@ import {
   ListItemText,
   CircularProgress,
   TextField,
-  Menu,
-  MenuItem,
-  IconButton
+  Autocomplete,
+  MenuItem
 } from '@mui/material';
-import { 
-  CheckCircle, 
-  Cancel, 
-  QrCodeScanner, 
-  CameraAlt, 
-  Videocam, 
-  Smartphone, 
-  Close, 
-  Refresh,
-  CameraFront,
-  CameraRear,
-  MoreVert
-} from '@mui/icons-material';
+import { CheckCircle, Cancel, QrCodeScanner, CameraAlt, Videocam, Smartphone, Close, Refresh } from '@mui/icons-material';
 import axios from 'axios';
 
 const Scanner = () => {
@@ -52,14 +39,47 @@ const Scanner = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [scanDebug, setScanDebug] = useState('');
   const [manualEmail, setManualEmail] = useState('');
-  const [availableCameras, setAvailableCameras] = useState([]);
-  const [activeCameraId, setActiveCameraId] = useState('');
-  const [cameraMenuAnchor, setCameraMenuAnchor] = useState(null);
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   // Check camera support
   useEffect(() => {
     checkCameraSupport();
   }, []);
+
+  // Load email suggestions when component mounts
+  useEffect(() => {
+    loadEmailSuggestions();
+  }, []);
+
+  const loadEmailSuggestions = async () => {
+    try {
+      setLoadingSuggestions(true);
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await axios.get(`${API_BASE_URL}/api/participants`, {
+        headers: getAuthHeader()
+      });
+      
+      const suggestions = response.data.map(participant => ({
+        label: participant.email,
+        name: participant.name,
+        mobile: participant.mobile
+      }));
+      
+      setEmailSuggestions(suggestions);
+      setScanDebug(`Loaded ${suggestions.length} email suggestions`);
+    } catch (error) {
+      console.error('Error loading suggestions:', error);
+      setScanDebug('Failed to load email suggestions');
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const getAuthHeader = () => {
+    const credentials = btoa('cscr:cscr123$@');
+    return { Authorization: `Basic ${credentials}` };
+  };
 
   const checkCameraSupport = async () => {
     try {
@@ -85,44 +105,7 @@ const Scanner = () => {
     }
   };
 
-  const getAvailableCameras = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      setAvailableCameras(videoDevices);
-      
-      // Try to identify back camera (usually has "back" or "rear" in label)
-      const backCamera = videoDevices.find(device => 
-        device.label.toLowerCase().includes('back') || 
-        device.label.toLowerCase().includes('rear') ||
-        device.label.toLowerCase().includes('environment')
-      );
-      
-      const frontCamera = videoDevices.find(device => 
-        device.label.toLowerCase().includes('front') || 
-        device.label.toLowerCase().includes('user')
-      );
-
-      // Prefer back camera for barcode scanning
-      if (backCamera) {
-        setActiveCameraId(backCamera.deviceId);
-        return backCamera.deviceId;
-      } else if (frontCamera) {
-        setActiveCameraId(frontCamera.deviceId);
-        return frontCamera.deviceId;
-      } else if (videoDevices.length > 0) {
-        setActiveCameraId(videoDevices[0].deviceId);
-        return videoDevices[0].deviceId;
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error getting cameras:', error);
-      return null;
-    }
-  };
-
-  const startScanner = async (cameraId = null) => {
+  const startScanner = async () => {
     setIsLoading(true);
     setCameraError('');
     setError('');
@@ -130,58 +113,39 @@ const Scanner = () => {
     setScanDebug('Starting scanner...');
 
     try {
-      // Check if html5-qrcode is available
       if (!window.Html5QrcodeScanner) {
         setCameraError('Barcode scanner library not loaded. Please refresh the page.');
         setIsLoading(false);
         return;
       }
 
-      // Get available cameras
-      const cameras = await getAvailableCameras();
-      let targetCameraId = cameraId || activeCameraId;
-
-      // If no specific camera requested, use preferred camera
-      if (!targetCameraId && cameras) {
-        targetCameraId = cameras;
-      }
-
-      // Stop any existing scanner
       if (scanner) {
         await scanner.clear();
         setScanner(null);
       }
 
-      // Scanner configuration
-      const config = {
-        fps: 10,
-        qrbox: { width: 300, height: 200 },
-        rememberLastUsedCamera: true,
-        supportedScanTypes: [
-          window.Html5QrcodeScanType.SCAN_TYPE_QR_CODE,
-          window.Html5QrcodeScanType.SCAN_TYPE_CODE_128,
-          window.Html5QrcodeScanType.SCAN_TYPE_CODE_39,
-          window.Html5QrcodeScanType.SCAN_TYPE_CODE_93,
-          window.Html5QrcodeScanType.SCAN_TYPE_EAN_8,
-          window.Html5QrcodeScanType.SCAN_TYPE_EAN_13
-        ]
-      };
-
-      // Create scanner with specific camera if provided
       const html5QrcodeScanner = new window.Html5QrcodeScanner(
         "reader",
-        config,
+        {
+          fps: 10,
+          qrbox: { width: 300, height: 200 },
+          rememberLastUsedCamera: true,
+          supportedScanTypes: [
+            window.Html5QrcodeScanType.SCAN_TYPE_QR_CODE,
+            window.Html5QrcodeScanType.SCAN_TYPE_CODE_128,
+            window.Html5QrcodeScanType.SCAN_TYPE_CODE_39,
+            window.Html5QrcodeScanType.SCAN_TYPE_CODE_93,
+            window.Html5QrcodeScanType.SCAN_TYPE_EAN_8,
+            window.Html5QrcodeScanType.SCAN_TYPE_EAN_13
+          ]
+        },
         false
       );
 
       setScanner(html5QrcodeScanner);
       setIsScanning(true);
+      setScanDebug('Scanner started. Point camera at barcode...');
 
-      // Get camera info for debug
-      const cameraInfo = availableCameras.find(cam => cam.deviceId === targetCameraId);
-      setScanDebug(`Starting scanner with camera: ${cameraInfo?.label || 'Default'}`);
-
-      // Start scanning with specific camera
       html5QrcodeScanner.render(
         (decodedText, decodedResult) => {
           setScanDebug(`Scanned: ${decodedText} (Format: ${decodedResult?.result?.format?.formatName})`);
@@ -189,9 +153,7 @@ const Scanner = () => {
         },
         (errorMessage) => {
           console.log('Scan error (continuing):', errorMessage);
-        },
-        {
-          videoConstraints: targetCameraId ? { deviceId: { exact: targetCameraId } } : undefined
+          setScanDebug(`Scan error: ${errorMessage}. Keep trying...`);
         }
       );
 
@@ -205,24 +167,6 @@ const Scanner = () => {
     }
   };
 
-  const switchCamera = async (cameraId) => {
-    setScanDebug(`Switching to camera: ${cameraId}`);
-    setCameraMenuAnchor(null);
-    
-    // Stop current scanner
-    if (scanner) {
-      await scanner.clear();
-      setScanner(null);
-    }
-    
-    setIsScanning(false);
-    
-    // Start new scanner with selected camera
-    setTimeout(() => {
-      startScanner(cameraId);
-    }, 500);
-  };
-
   const stopScanner = async () => {
     try {
       if (scanner) {
@@ -231,7 +175,6 @@ const Scanner = () => {
       }
       setIsScanning(false);
       setScanDebug('Scanner stopped');
-      setCameraMenuAnchor(null);
     } catch (error) {
       console.error('Error stopping scanner:', error);
     }
@@ -267,7 +210,6 @@ const Scanner = () => {
   const handleScanResult = (decodedText) => {
     console.log('Barcode scanned:', decodedText);
     
-    // Validate if it looks like an email
     if (decodedText.includes('@') && decodedText.includes('.')) {
       setScanResult(decodedText);
       setSuccess('Barcode scanned successfully!');
@@ -279,11 +221,12 @@ const Scanner = () => {
     }
   };
 
-  const handleManualSubmit = () => {
-    if (manualEmail && manualEmail.includes('@')) {
-      setScanResult(manualEmail);
-      checkParticipant(manualEmail);
-      setManualEmail('');
+  const handleManualSubmit = (email = null) => {
+    const emailToCheck = email || manualEmail;
+    if (emailToCheck && emailToCheck.includes('@')) {
+      setScanResult(emailToCheck);
+      checkParticipant(emailToCheck);
+      if (!email) setManualEmail(''); // Clear only if not from autocomplete selection
     } else {
       setError('Please enter a valid email address');
     }
@@ -355,107 +298,71 @@ const Scanner = () => {
     };
   }, [scanner]);
 
-  const CameraMenu = () => (
-    <Menu
-      anchorEl={cameraMenuAnchor}
-      open={Boolean(cameraMenuAnchor)}
-      onClose={() => setCameraMenuAnchor(null)}
-    >
-      <MenuItem disabled>
-        <Typography variant="subtitle2">Select Camera:</Typography>
-      </MenuItem>
-      {availableCameras.map((camera) => (
-        <MenuItem
-          key={camera.deviceId}
-          onClick={() => switchCamera(camera.deviceId)}
-          selected={activeCameraId === camera.deviceId}
-        >
-          <ListItemIcon>
-            {camera.label.toLowerCase().includes('back') || 
-             camera.label.toLowerCase().includes('rear') ? (
-              <CameraRear />
-            ) : (
-              <CameraFront />
-            )}
-          </ListItemIcon>
-          <ListItemText 
-            primary={camera.label || `Camera ${availableCameras.indexOf(camera) + 1}`}
-            secondary={activeCameraId === camera.deviceId ? 'Active' : ''}
-          />
-        </MenuItem>
-      ))}
-      {availableCameras.length === 0 && (
-        <MenuItem disabled>
-          <Typography variant="body2">No cameras found</Typography>
-        </MenuItem>
-      )}
-    </Menu>
-  );
-
   const CameraHelpDialog = () => (
     <Dialog open={showCameraHelp} onClose={() => setShowCameraHelp(false)} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center">
           <CameraAlt sx={{ mr: 1 }} />
-          Camera Switching Help
+          Barcode Scanner Help
         </Box>
       </DialogTitle>
       <DialogContent>
         <Typography variant="h6" gutterBottom>
-          How to Switch Cameras
+          Scanner Not Reading Barcodes?
         </Typography>
         
         <List>
           <ListItem>
             <ListItemIcon>
-              <CameraRear />
+              <Smartphone />
             </ListItemIcon>
             <ListItemText 
-              primary="Back Camera (Recommended)" 
-              secondary="Better for barcode scanning. Higher quality, auto-focus"
+              primary="Use HTTPS" 
+              secondary="Camera requires HTTPS. Use ngrok for local testing: 'ngrok http 3000'"
             />
           </ListItem>
           
           <ListItem>
             <ListItemIcon>
-              <CameraFront />
+              <Videocam />
             </ListItemIcon>
             <ListItemText 
-              primary="Front Camera" 
-              secondary="Use if back camera has issues or for selfie mode"
+              primary="Good Lighting" 
+              secondary="Ensure the barcode is well-lit without glare or shadows"
             />
           </ListItem>
           
+          <ListItem>
+            <ListItemIcon>
+              <QrCodeScanner />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Steady Position" 
+              secondary="Hold the camera steady 6-12 inches from the barcode"
+            />
+          </ListItem>
+
           <ListItem>
             <ListItemIcon>
               <Refresh />
             </ListItemIcon>
             <ListItemText 
-              primary="Switch Anytime" 
-              secondary="Click camera icon during scanning to switch cameras"
+              primary="Manual Entry Available" 
+              secondary="Use the email autocomplete to quickly find participants"
             />
           </ListItem>
         </List>
 
         <Alert severity="info" sx={{ mt: 2 }}>
           <Typography variant="body2">
-            <strong>Tip:</strong> The app automatically tries to use the back camera first for better barcode scanning quality.
+            <strong>Tip:</strong> Use the email autocomplete feature for quick manual entry when scanning fails.
           </Typography>
         </Alert>
-
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-          Troubleshooting:
-        </Typography>
-        <Box component="ul" sx={{ pl: 2 }}>
-          <li><Typography variant="body2">If camera switch fails, stop and restart scanner</Typography></li>
-          <li><Typography variant="body2">Ensure good lighting for back camera</Typography></li>
-          <li><Typography variant="body2">Hold device steady 6-12 inches from barcode</Typography></li>
-        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setShowCameraHelp(false)}>Close</Button>
         <Button onClick={startScanner} variant="contained">
-          Start Scanner
+          Try Scanner Again
         </Button>
       </DialogActions>
     </Dialog>
@@ -471,20 +378,9 @@ const Scanner = () => {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6">
-                  Scanner Interface
-                </Typography>
-                {isScanning && availableCameras.length > 1 && (
-                  <IconButton
-                    onClick={(e) => setCameraMenuAnchor(e.currentTarget)}
-                    color="primary"
-                    title="Switch Camera"
-                  >
-                    <CameraRear />
-                  </IconButton>
-                )}
-              </Box>
+              <Typography variant="h6" gutterBottom>
+                Scanner Interface
+              </Typography>
 
               {cameraError && (
                 <Alert severity="error" sx={{ mb: 2 }}>
@@ -570,21 +466,6 @@ const Scanner = () => {
                       animation: 'scanLine 2s ease-in-out infinite'
                     }}
                   />
-                  <Box 
-                    sx={{ 
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      backgroundColor: 'rgba(0,0,0,0.7)',
-                      color: 'white',
-                      px: 1,
-                      py: 0.5,
-                      borderRadius: 1,
-                      fontSize: '0.75rem'
-                    }}
-                  >
-                    {availableCameras.find(cam => cam.deviceId === activeCameraId)?.label || 'Camera'}
-                  </Box>
                   <Typography 
                     variant="body2" 
                     align="center" 
@@ -610,32 +491,99 @@ const Scanner = () => {
                 </Paper>
               )}
 
+              {/* Manual Entry with Autocomplete */}
               <Paper sx={{ p: 2, textAlign: 'center', mt: 2 }}>
                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                  Manual Entry (if scanner fails):
+                  Manual Entry with Suggestions:
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                  <TextField
-                    size="small"
-                    placeholder="Enter email manually"
+                
+                <Box sx={{ mb: 2 }}>
+                  <Autocomplete
+                    freeSolo
+                    options={emailSuggestions}
+                    getOptionLabel={(option) => 
+                      typeof option === 'string' ? option : option.label
+                    }
+                    renderOption={(props, option) => (
+                      <MenuItem {...props}>
+                        <Box>
+                          <Typography variant="body1">
+                            {option.label}
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {option.name} • {option.mobile}
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    )}
                     value={manualEmail}
-                    onChange={(e) => setManualEmail(e.target.value)}
-                    fullWidth
+                    onChange={(event, newValue) => {
+                      if (newValue && typeof newValue === 'object') {
+                        setManualEmail(newValue.label);
+                        handleManualSubmit(newValue.label);
+                      } else if (newValue && typeof newValue === 'string') {
+                        setManualEmail(newValue);
+                      }
+                    }}
+                    onInputChange={(event, newInputValue) => {
+                      setManualEmail(newInputValue);
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        placeholder="Type email or select from suggestions"
+                        size="small"
+                        fullWidth
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <React.Fragment>
+                              {loadingSuggestions ? (
+                                <CircularProgress color="inherit" size={20} />
+                              ) : null}
+                              {params.InputProps.endAdornment}
+                            </React.Fragment>
+                          ),
+                        }}
+                      />
+                    )}
+                    sx={{ mb: 1 }}
                   />
+                  
                   <Button
                     variant="outlined"
-                    onClick={handleManualSubmit}
+                    onClick={() => handleManualSubmit()}
+                    disabled={!manualEmail || !manualEmail.includes('@')}
+                    fullWidth
                   >
-                    Submit
+                    Search Participant
                   </Button>
                 </Box>
-                <Button
-                  variant="outlined"
-                  onClick={() => setShowCameraHelp(true)}
-                  startIcon={<CameraAlt />}
-                >
-                  Camera Help & Tips
-                </Button>
+
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowCameraHelp(true)}
+                    startIcon={<CameraAlt />}
+                    size="small"
+                  >
+                    Scanner Help
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    onClick={loadEmailSuggestions}
+                    startIcon={<Refresh />}
+                    size="small"
+                    disabled={loadingSuggestions}
+                  >
+                    {loadingSuggestions ? 'Loading...' : 'Refresh List'}
+                  </Button>
+                </Box>
+
+                <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
+                  {emailSuggestions.length} participants available
+                </Typography>
               </Paper>
 
               {scanResult && (
@@ -699,7 +647,6 @@ const Scanner = () => {
         </Grid>
       </Grid>
 
-      <CameraMenu />
       <CameraHelpDialog />
 
       {/* Add CSS for scanner animation */}
