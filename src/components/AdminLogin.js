@@ -90,13 +90,7 @@ const AdminLogin = ({ onLogin }) => {
             </Button>
           </form>
 
-          <Paper sx={{ p: 2, mt: 2, backgroundColor: '#f5f5f5' }}>
-            <Typography variant="body2" color="textSecondary">
-              <strong>Default Credentials:</strong><br />
-              Username: cscr<br />
-              Password: cscr123$@
-            </Typography>
-          </Paper>
+         
         </CardContent>
       </Card>
     </Box>
