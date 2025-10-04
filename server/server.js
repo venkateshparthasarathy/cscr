@@ -1,398 +1,435 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-require('dotenv').config();
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Alert,
+  Chip,
+  Grid,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText
+} from '@mui/material';
+import { CheckCircle, Cancel, QrCodeScanner, CameraAlt, Videocam, Smartphone } from '@mui/icons-material';
+import axios from 'axios';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const Scanner = () => {
+  const [scanResult, setScanResult] = useState('');
+  const [participant, setParticipant] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [cameraError, setCameraError] = useState('');
+  const [isCameraSupported, setIsCameraSupported] = useState(true);
+  const [cameraPermission, setCameraPermission] = useState('prompt'); // 'granted', 'denied', 'prompt'
+  const [showCameraHelp, setShowCameraHelp] = useState(false);
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-// MongoDB Atlas connection with your credentials
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://venkateshparthasarathyv_db_user:kXVKxy1cMjZkSsdE@foodcourt.whjpv5e.mongodb.net/foodcourt?retryWrites=true&w=majority';
+  // Check camera support and permissions
+  useEffect(() => {
+    checkCameraSupport();
+  }, []);
 
-// Enhanced MongoDB connection with better error handling
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB Atlas successfully');
-  console.log('📊 Database: foodcourt');
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  console.log('💡 Please check:');
-  console.log('   1. MongoDB Atlas cluster status');
-  console.log('   2. Network connectivity');
-  console.log('   3. IP whitelist in MongoDB Atlas');
-  process.exit(1);
-});
-
-// MongoDB connection event handlers
-mongoose.connection.on('connected', () => {
-  console.log('📊 Mongoose connected to MongoDB Atlas');
-});
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌ Mongoose connection error: ', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ Mongoose disconnected from MongoDB Atlas');
-});
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('🛑 MongoDB connection closed due to app termination');
-  process.exit(0);
-});
-
-// Admin Schema
-const adminSchema = new mongoose.Schema({
-  username: { type: String, unique: true, required: true },
-  password: { type: String, required: true }
-}, { timestamps: true });
-
-const Admin = mongoose.model('Admin', adminSchema);
-
-// Participant Schema
-const participantSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  mobile: { type: String, required: true },
-  email: { type: String, unique: true, required: true },
-  meals: {
-    day1: {
-      morningSnack: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
-      },
-      lunch: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
-      },
-      eveningSnack: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
-      },
-      dinner: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
+  const checkCameraSupport = async () => {
+    try {
+      // Check if browser supports mediaDevices
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setIsCameraSupported(false);
+        setCameraError('Camera API not supported in this browser');
+        return;
       }
-    },
-    day2: {
-      morningSnack: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
-      },
-      lunch: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
-      },
-      eveningSnack: { 
-        consumed: { type: Boolean, default: false },
-        timestamp: { type: Date, default: null }
+
+      // Check camera permissions
+      if (navigator.permissions) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+          setCameraPermission(permissionStatus.state);
+          
+          permissionStatus.onchange = () => {
+            setCameraPermission(permissionStatus.state);
+          };
+        } catch (e) {
+          console.log('Permission API not supported');
+        }
       }
+    } catch (error) {
+      console.error('Error checking camera support:', error);
     }
-  }
-}, { timestamps: true });
+  };
 
-const Participant = mongoose.model('Participant', participantSchema);
-
-// Initialize default admin
-const initializeAdmin = async () => {
-  try {
-    const existingAdmin = await Admin.findOne({ username: 'cscr' });
-    if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash('cscr123$@', 12);
-      const admin = new Admin({
-        username: 'cscr',
-        password: hashedPassword
+  const stopCamera = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach(track => {
+        track.stop();
       });
-      await admin.save();
-      console.log('✅ Default admin created: cscr / cscr123$@');
-    } else {
-      console.log('✅ Admin user already exists');
+      setStream(null);
     }
-  } catch (error) {
-    console.error('❌ Error initializing admin:', error.message);
-  }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, [stream]);
+
+  const startCamera = async () => {
+    setIsLoading(true);
+    setCameraError('');
+    setError('');
+
+    try {
+      // Stop any existing stream first
+      stopCamera();
+
+      // Try different camera constraints
+      const constraints = {
+        video: {
+          facingMode: 'environment', // Prefer rear camera
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(e => {
+          console.error('Error playing video:', e);
+          setCameraError('Failed to start camera preview');
+        });
+      }
+      
+      setCameraPermission('granted');
+    } catch (err) {
+      console.error('Camera error:', err);
+      handleCameraError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCameraError = (error) => {
+    let errorMessage = 'Camera access denied or not available';
+    
+    switch (error.name) {
+      case 'NotAllowedError':
+        errorMessage = 'Camera permission denied. Please allow camera access in your browser settings.';
+        setCameraPermission('denied');
+        break;
+      case 'NotFoundError':
+      case 'OverconstrainedError':
+        errorMessage = 'No camera found or camera doesn\'t meet requirements.';
+        break;
+      case 'NotSupportedError':
+        errorMessage = 'Camera not supported on this device.';
+        setIsCameraSupported(false);
+        break;
+      case 'NotReadableError':
+        errorMessage = 'Camera is already in use by another application.';
+        break;
+      default:
+        errorMessage = `Camera error: ${error.message}`;
+    }
+    
+    setCameraError(errorMessage);
+  };
+
+  const handleBarcodeInput = (email) => {
+    setScanResult(email);
+    checkParticipant(email);
+  };
+
+  const checkParticipant = async (email) => {
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await axios.get(`${API_BASE_URL}/api/participant/${email}`);
+      setParticipant(response.data);
+      setError('');
+    } catch (error) {
+      setParticipant(null);
+      setError('Participant not found');
+    }
+  };
+
+  const markMealConsumed = async (day, mealType) => {
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await axios.put(`${API_BASE_URL}/api/participant/${scanResult}/meal`, {
+        day,
+        mealType
+      });
+      setParticipant(response.data);
+      setSuccess(`${mealType} marked as consumed!`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      setError('Error updating meal status');
+    }
+  };
+
+  const getMealStatus = (day, mealType) => {
+    if (!participant) return { consumed: false, timestamp: null };
+    return participant.meals[day][mealType];
+  };
+
+  const MealButton = ({ day, mealType, label }) => {
+    const meal = getMealStatus(day, mealType);
+    
+    return (
+      <Button
+        variant={meal.consumed ? "contained" : "outlined"}
+        color={meal.consumed ? "success" : "primary"}
+        onClick={() => markMealConsumed(day, mealType)}
+        disabled={meal.consumed || !participant}
+        fullWidth
+        sx={{ mb: 1 }}
+      >
+        {label}
+        {meal.consumed && <CheckCircle sx={{ ml: 1 }} />}
+      </Button>
+    );
+  };
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => stopCamera();
+  }, [stopCamera]);
+
+  const CameraHelpDialog = () => (
+    <Dialog open={showCameraHelp} onClose={() => setShowCameraHelp(false)} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        <Box display="flex" alignItems="center">
+          <CameraAlt sx={{ mr: 1 }} />
+          Camera Help
+        </Box>
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="h6" gutterBottom>
+          Mobile Camera Not Working?
+        </Typography>
+        
+        <List>
+          <ListItem>
+            <ListItemIcon>
+              <Smartphone />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Use HTTPS" 
+              secondary="Camera only works on HTTPS websites. Make sure you're using a secure connection."
+            />
+          </ListItem>
+          
+          <ListItem>
+            <ListItemIcon>
+              <Videocam />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Allow Camera Permissions" 
+              secondary="When prompted, click 'Allow' to grant camera access. If blocked, check browser settings."
+            />
+          </ListItem>
+          
+          <ListItem>
+            <ListItemIcon>
+              <QrCodeScanner />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Use Rear Camera" 
+              secondary="The app tries to use the rear camera automatically. Make sure no other app is using the camera."
+            />
+          </ListItem>
+        </List>
+
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+          Still having issues? Try these steps:
+        </Typography>
+        <Box component="ol" sx={{ pl: 2 }}>
+          <li><Typography variant="body2">Close other apps using camera</Typography></li>
+          <li><Typography variant="body2">Restart your browser</Typography></li>
+          <li><Typography variant="body2">Update your browser to latest version</Typography></li>
+          <li><Typography variant="body2">Try a different browser (Chrome recommended)</Typography></li>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setShowCameraHelp(false)}>Close</Button>
+        <Button onClick={startCamera} variant="contained">
+          Try Camera Again
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  return (
+    <Box>
+      <Typography variant="h4" gutterBottom align="center">
+        Barcode Scanner
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Scanner Interface
+              </Typography>
+
+              {cameraError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {cameraError}
+                  <Button 
+                    size="small" 
+                    onClick={() => setShowCameraHelp(true)}
+                    sx={{ ml: 1 }}
+                  >
+                    Get Help
+                  </Button>
+                </Alert>
+              )}
+
+              {!isCameraSupported && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Camera not supported in this browser. Please use Chrome, Firefox, or Safari.
+                </Alert>
+              )}
+
+              {cameraPermission === 'denied' && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Camera access denied. Please enable camera permissions in your browser settings.
+                </Alert>
+              )}
+              
+              <Box sx={{ mb: 2 }}>
+                {!stream ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<QrCodeScanner />}
+                    onClick={startCamera}
+                    disabled={isLoading || !isCameraSupported}
+                    fullWidth
+                    size="large"
+                  >
+                    {isLoading ? 'Starting Camera...' : 'Start Camera'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    onClick={stopCamera}
+                    fullWidth
+                  >
+                    Stop Camera
+                  </Button>
+                )}
+              </Box>
+
+              {/* Camera Preview */}
+              {stream && (
+                <Box sx={{ mb: 2, position: 'relative', backgroundColor: '#000', borderRadius: 1, overflow: 'hidden' }}>
+                  <video
+                    ref={videoRef}
+                    style={{ 
+                      width: '100%', 
+                      height: '300px',
+                      objectFit: 'cover'
+                    }}
+                    playsInline
+                    muted
+                  />
+                  <Box 
+                    sx={{ 
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: '200px',
+                      height: '2px',
+                      backgroundColor: 'red',
+                      opacity: 0.7
+                    }}
+                  />
+                </Box>
+              )}
+
+              <Paper sx={{ p: 2, textAlign: 'center', mt: 2 }}>
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  Manual Email Input (for testing):
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleBarcodeInput('test@example.com')}
+                  sx={{ mb: 1, mr: 1 }}
+                >
+                  Test Participant
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowCameraHelp(true)}
+                >
+                  Camera Help
+                </Button>
+              </Paper>
+
+              {scanResult && (
+                <Box sx={{ mt: 2 }}>
+                  <Chip 
+                    label={`Scanned: ${scanResult}`}
+                    color={participant ? "success" : "error"}
+                    icon={participant ? <CheckCircle /> : <Cancel />}
+                  />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Participant Details
+              </Typography>
+
+              {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
+              {participant ? (
+                <Box>
+                  <Typography><strong>Name:</strong> {participant.name}</Typography>
+                  <Typography><strong>Mobile:</strong> {participant.mobile}</Typography>
+                  <Typography><strong>Email:</strong> {participant.email}</Typography>
+                  
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="h6" gutterBottom>Day 1 Meals</Typography>
+                    <MealButton day="day1" mealType="morningSnack" label="Morning Snack" />
+                    <MealButton day="day1" mealType="lunch" label="Lunch" />
+                    <MealButton day="day1" mealType="eveningSnack" label="Evening Snack" />
+                    <MealButton day="day1" mealType="dinner" label="Dinner" />
+
+                    <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Day 2 Meals</Typography>
+                    <MealButton day="day2" mealType="morningSnack" label="Morning Snack" />
+                    <MealButton day="day2" mealType="lunch" label="Lunch" />
+                    <MealButton day="day2" mealType="eveningSnack" label="Evening Snack" />
+                  </Box>
+                </Box>
+              ) : (
+                <Typography color="textSecondary">
+                  Scan a barcode or enter email to view participant details
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <CameraHelpDialog />
+    </Box>
+  );
 };
 
-// Middleware to check admin authentication
-const authenticateAdmin = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  try {
-    const credentials = Buffer.from(authHeader.slice(6), 'base64').toString();
-    const [username, password] = credentials.split(':');
-
-    if (!username || !password) {
-      return res.status(401).json({ error: 'Invalid authorization header' });
-    }
-
-    const admin = await Admin.findOne({ username });
-    if (!admin || !(await bcrypt.compare(password, admin.password))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    
-    next();
-  } catch (error) {
-    console.error('Auth error:', error);
-    res.status(500).json({ error: 'Authentication error' });
-  }
-};
-
-// Health check route
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Public routes
-app.get('/api/participant/:email', async (req, res) => {
-  try {
-    const participant = await Participant.findOne({ email: req.params.email });
-    if (!participant) {
-      return res.status(404).json({ error: 'Participant not found' });
-    }
-    res.json(participant);
-  } catch (error) {
-    console.error('Error fetching participant:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.put('/api/participant/:email/meal', async (req, res) => {
-  try {
-    const { day, mealType } = req.body;
-    const participant = await Participant.findOne({ email: req.params.email });
-    
-    if (!participant) {
-      return res.status(404).json({ error: 'Participant not found' });
-    }
-
-    // Validate day and mealType
-    const validDays = ['day1', 'day2'];
-    const validMeals = {
-      day1: ['morningSnack', 'lunch', 'eveningSnack', 'dinner'],
-      day2: ['morningSnack', 'lunch', 'eveningSnack']
-    };
-
-    if (!validDays.includes(day) || !validMeals[day]?.includes(mealType)) {
-      return res.status(400).json({ error: 'Invalid day or meal type' });
-    }
-
-    participant.meals[day][mealType] = {
-      consumed: true,
-      timestamp: new Date()
-    };
-    
-    await participant.save();
-    res.json(participant);
-  } catch (error) {
-    console.error('Error updating meal:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Protected admin routes
-app.get('/api/participants', authenticateAdmin, async (req, res) => {
-  try {
-    const participants = await Participant.find().sort({ createdAt: -1 });
-    res.json(participants);
-  } catch (error) {
-    console.error('Error fetching participants:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.post('/api/participant', authenticateAdmin, async (req, res) => {
-  try {
-    const { name, mobile, email } = req.body;
-
-    if (!name || !mobile || !email) {
-      return res.status(400).json({ error: 'Name, mobile, and email are required' });
-    }
-
-    const participant = new Participant({
-      name,
-      mobile,
-      email,
-      meals: {
-        day1: {
-          morningSnack: { consumed: false, timestamp: null },
-          lunch: { consumed: false, timestamp: null },
-          eveningSnack: { consumed: false, timestamp: null },
-          dinner: { consumed: false, timestamp: null }
-        },
-        day2: {
-          morningSnack: { consumed: false, timestamp: null },
-          lunch: { consumed: false, timestamp: null },
-          eveningSnack: { consumed: false, timestamp: null }
-        }
-      }
-    });
-
-    await participant.save();
-    res.status(201).json(participant);
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ error: 'Email already exists' });
-    }
-    console.error('Error creating participant:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.put('/api/reset-meals', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await Participant.updateMany({}, {
-      $set: {
-        'meals.day1.morningSnack': { consumed: false, timestamp: null },
-        'meals.day1.lunch': { consumed: false, timestamp: null },
-        'meals.day1.eveningSnack': { consumed: false, timestamp: null },
-        'meals.day1.dinner': { consumed: false, timestamp: null },
-        'meals.day2.morningSnack': { consumed: false, timestamp: null },
-        'meals.day2.lunch': { consumed: false, timestamp: null },
-        'meals.day2.eveningSnack': { consumed: false, timestamp: null }
-      }
-    });
-    
-    res.json({ 
-      message: 'All meals reset successfully',
-      modifiedCount: result.modifiedCount
-    });
-  } catch (error) {
-    console.error('Error resetting meals:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Reset individual meal
-app.put('/api/participant/:email/reset-meal', authenticateAdmin, async (req, res) => {
-  try {
-    const { day, mealType } = req.body;
-    const participant = await Participant.findOne({ email: req.params.email });
-    
-    if (!participant) {
-      return res.status(404).json({ error: 'Participant not found' });
-    }
-
-    // Validate day and mealType
-    const validDays = ['day1', 'day2'];
-    const validMeals = {
-      day1: ['morningSnack', 'lunch', 'eveningSnack', 'dinner'],
-      day2: ['morningSnack', 'lunch', 'eveningSnack']
-    };
-
-    if (!validDays.includes(day) || !validMeals[day]?.includes(mealType)) {
-      return res.status(400).json({ error: 'Invalid day or meal type' });
-    }
-
-    participant.meals[day][mealType] = {
-      consumed: false,
-      timestamp: null
-    };
-    
-    await participant.save();
-    res.json(participant);
-  } catch (error) {
-    console.error('Error resetting individual meal:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Admin login route
-app.post('/api/admin/login', async (req, res) => {
-  const { username, password } = req.body;
-  
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
-  }
-
-  try {
-    const admin = await Admin.findOne({ username });
-    if (!admin || !(await bcrypt.compare(password, admin.password))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    res.json({ 
-      message: 'Login successful',
-      user: { username: admin.username }
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login error' });
-  }
-});
-
-// Get participant count
-app.get('/api/stats', authenticateAdmin, async (req, res) => {
-  try {
-    const totalParticipants = await Participant.countDocuments();
-    const participantsWithMeals = await Participant.aggregate([
-      {
-        $project: {
-          totalMeals: {
-            $add: [
-              { $size: { $objectToArray: "$meals.day1" } },
-              { $size: { $objectToArray: "$meals.day2" } }
-            ]
-          },
-          consumedMeals: {
-            $add: [
-              { $size: { $filter: { input: { $objectToArray: "$meals.day1" }, as: "meal", cond: "$$meal.v.consumed" } } },
-              { $size: { $filter: { input: { $objectToArray: "$meals.day2" }, as: "meal", cond: "$$meal.v.consumed" } } }
-            ]
-          }
-        }
-      }
-    ]);
-
-    res.json({
-      totalParticipants,
-      totalMealsConsumed: participantsWithMeals.reduce((sum, p) => sum + p.consumedMeals, 0),
-      totalPossibleMeals: participantsWithMeals.reduce((sum, p) => sum + p.totalMeals, 0)
-    });
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('Unhandled error:', error);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// FIXED: 404 handler - removed the problematic '*' route
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, async () => {
-  console.log('🚀 Starting Food Court Management System...');
-  console.log(`📍 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  
-  try {
-    await initializeAdmin();
-    console.log('✅ Server initialization completed');
-  } catch (error) {
-    console.error('❌ Server initialization failed:', error);
-    process.exit(1);
-  }
-});
+export default Scanner;
