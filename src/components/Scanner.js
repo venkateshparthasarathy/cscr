@@ -20,11 +20,14 @@ import {
   CircularProgress,
   TextField,
   Autocomplete,
-  MenuItem
+  MenuItem,
+  IconButton
 } from '@mui/material';
 import { CheckCircle, Cancel, QrCodeScanner, CameraAlt, Videocam, Smartphone, Close, Refresh } from '@mui/icons-material';
 import axios from 'axios';
-import jsQR from 'jsqr';
+
+// Import ZXing library
+import { BrowserMultiFormatReader, Exception, NotFoundException } from '@zxing/library';
 
 const Scanner = () => {
   const [scanResult, setScanResult] = useState('');
@@ -41,22 +44,61 @@ const Scanner = () => {
   const [manualEmail, setManualEmail] = useState('');
   const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const codeReaderRef = useRef(null);
   const streamRef = useRef(null);
-  const animationFrameRef = useRef(null);
+
+  // Initialize ZXing reader
+  useEffect(() => {
+    codeReaderRef.current = new BrowserMultiFormatReader();
+    console.log('ZXing BrowserMultiFormatReader initialized');
+    
+    // Get available cameras
+    getAvailableCameras();
+    
+    return () => {
+      stopScanner();
+    };
+  }, []);
 
   // Check camera support
   useEffect(() => {
     checkCameraSupport();
-    return () => stopScanner();
   }, []);
 
   // Load email suggestions when component mounts
   useEffect(() => {
     loadEmailSuggestions();
   }, []);
+
+  const getAvailableCameras = async () => {
+    try {
+      const videoInputDevices = await codeReaderRef.current.listVideoInputDevices();
+      setAvailableCameras(videoInputDevices);
+      
+      // Try to find back camera
+      const backCamera = videoInputDevices.find(device => 
+        device.label.toLowerCase().includes('back') || 
+        device.label.toLowerCase().includes('rear') ||
+        device.label.toLowerCase().includes('environment')
+      );
+      
+      if (backCamera) {
+        setSelectedCameraId(backCamera.deviceId);
+      } else if (videoInputDevices.length > 0) {
+        setSelectedCameraId(videoInputDevices[0].deviceId);
+      }
+      
+      setScanDebug(`Found ${videoInputDevices.length} cameras`);
+    } catch (error) {
+      console.error('Error getting cameras:', error);
+      setScanDebug('Could not access camera list');
+    }
+  };
 
   const loadEmailSuggestions = async () => {
     try {
@@ -122,82 +164,112 @@ const Scanner = () => {
       // Stop any existing scanner
       await stopScanner();
 
+      // Wait a bit for the video element to be available in DOM
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      if (!videoRef.current) {
+        throw new Error('Video element not found. Please try again.');
+      }
+
+      // Request camera stream first
       const constraints = {
-        video: {
-          facingMode: 'environment',
+        video: { 
+          deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
           width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
+          height: { ideal: 720 },
+          facingMode: selectedCameraId ? undefined : 'environment'
+        } 
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Set stream to video element
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS
+      
+      // Wait for video to be ready
+      await new Promise((resolve, reject) => {
+        if (videoRef.current) {
+          videoRef.current.onloadedmetadata = () => resolve();
+          videoRef.current.onerror = reject;
+        } else {
+          reject(new Error('Video element not available'));
+        }
+      });
+
+      await videoRef.current.play();
+      
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      // Start ZXing decoding
+      codeReaderRef.current.decodeFromVideoDevice(
+        selectedCameraId,
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            handleScanResult(result.getText());
+          }
+          
+          if (error && !(error instanceof NotFoundException)) {
+            console.log('ZXing scan error:', error);
+            setScanDebug(`Scanning... ${error.message || 'Looking for barcode'}`);
+          }
+        }
+      );
 
       setIsScanning(true);
       setCameraPermission('granted');
       setScanDebug('Scanner started. Point camera at barcode...');
-
-      // Start scanning loop
-      scanFrame();
+      setRetryCount(0); // Reset retry count on success
 
     } catch (err) {
       console.error('Scanner error:', err);
       handleCameraError(err);
       setScanDebug(`Scanner error: ${err.message}`);
+      
+      // Auto-retry logic (max 3 retries)
+      if (retryCount < 3) {
+        setRetryCount(prev => prev + 1);
+        setScanDebug(`Retrying... (${retryCount + 1}/3)`);
+        setTimeout(() => startScanner(), 1000);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const scanFrame = () => {
-    if (!isScanning || !videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-      if (code) {
-        setScanDebug(`Scanned: ${code.data}`);
-        handleScanResult(code.data);
+  const stopScanner = async () => {
+    try {
+      if (codeReaderRef.current) {
+        codeReaderRef.current.reset();
       }
-    }
 
-    if (isScanning) {
-      animationFrameRef.current = requestAnimationFrame(scanFrame);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        streamRef.current = null;
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+
+      setIsScanning(false);
+      setScanDebug('Scanner stopped');
+    } catch (error) {
+      console.error('Error stopping scanner:', error);
     }
   };
 
-  const stopScanner = async () => {
-    setIsScanning(false);
+  const switchCamera = async (cameraId) => {
+    setSelectedCameraId(cameraId);
+    setScanDebug(`Switching to camera: ${cameraId}`);
     
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+    if (isScanning) {
+      await stopScanner();
+      setTimeout(() => startScanner(), 500);
     }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setScanDebug('Scanner stopped');
   };
 
   const handleCameraError = (error) => {
@@ -209,8 +281,10 @@ const Scanner = () => {
         setCameraPermission('denied');
         break;
       case 'NotFoundError':
+        errorMessage = 'No camera found. Please check if a camera is connected.';
+        break;
       case 'OverconstrainedError':
-        errorMessage = 'No camera found or camera doesn\'t meet requirements.';
+        errorMessage = 'No camera found that meets the requirements. Try switching cameras.';
         break;
       case 'NotSupportedError':
         errorMessage = 'Camera not supported on this device.';
@@ -227,18 +301,38 @@ const Scanner = () => {
     setScanDebug(`Camera error: ${errorMessage}`);
   };
 
+  const handleVideoError = (e) => {
+    console.error('Video error:', e);
+    setCameraError('Failed to load video stream. Please try again.');
+    setScanDebug('Video element error occurred');
+  };
+
+  const retryCamera = async () => {
+    setCameraError('');
+    setCameraPermission('prompt');
+    setRetryCount(0);
+    await getAvailableCameras();
+    await startScanner();
+  };
+
   const handleScanResult = (decodedText) => {
     console.log('Barcode scanned:', decodedText);
     
-    if (decodedText.includes('@') && decodedText.includes('.')) {
-      setScanResult(decodedText);
+    // Clean and validate the scanned result
+    const cleanText = decodedText.trim();
+    
+    // Check if it's a valid email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (emailRegex.test(cleanText)) {
+      setScanResult(cleanText);
       setSuccess('Barcode scanned successfully!');
       setTimeout(() => setSuccess(''), 3000);
-      checkParticipant(decodedText);
-      stopScanner(); // Stop after successful scan
+      checkParticipant(cleanText);
+      stopScanner();
     } else {
-      setError('Scanned code does not appear to be a valid email address');
-      setScanDebug(`Invalid format: ${decodedText}`);
+      setError('Scanned code is not a valid email address');
+      setScanDebug(`Invalid format: ${cleanText}`);
     }
   };
 
@@ -257,29 +351,40 @@ const Scanner = () => {
     try {
       setScanDebug(`Checking participant: ${email}`);
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await axios.get(`${API_BASE_URL}/api/participant/${email}`);
+      const response = await axios.get(
+        `${API_BASE_URL}/api/participant/${encodeURIComponent(email)}`,
+        { headers: getAuthHeader() }
+      );
       setParticipant(response.data);
       setError('');
       setScanDebug(`Participant found: ${response.data.name}`);
     } catch (error) {
       setParticipant(null);
-      setError('Participant not found in database');
-      setScanDebug(`Participant not found: ${email}`);
+      if (error.response?.status === 404) {
+        setError('Participant not found in database');
+      } else {
+        setError('Error checking participant: ' + (error.response?.data?.message || error.message));
+      }
+      setScanDebug(`Error: ${error.message}`);
     }
   };
 
   const markMealConsumed = async (day, mealType) => {
     try {
+      setIsLoading(true);
       const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await axios.put(`${API_BASE_URL}/api/participant/${scanResult}/meal`, {
-        day,
-        mealType
-      });
+      const response = await axios.put(
+        `${API_BASE_URL}/api/participant/${encodeURIComponent(scanResult)}/meal`,
+        { day, mealType },
+        { headers: getAuthHeader() }
+      );
       setParticipant(response.data);
       setSuccess(`${mealType} marked as consumed!`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
-      setError('Error updating meal status');
+      setError('Error updating meal status: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -296,12 +401,12 @@ const Scanner = () => {
         variant={meal.consumed ? "contained" : "outlined"}
         color={meal.consumed ? "success" : "primary"}
         onClick={() => markMealConsumed(day, mealType)}
-        disabled={meal.consumed || !participant}
+        disabled={meal.consumed || !participant || isLoading}
         fullWidth
         sx={{ mb: 1 }}
+        startIcon={isLoading ? <CircularProgress size={20} /> : null}
       >
-        {label}
-        {meal.consumed && <CheckCircle sx={{ ml: 1 }} />}
+        {meal.consumed ? `${label} ✓` : label}
       </Button>
     );
   };
@@ -311,18 +416,28 @@ const Scanner = () => {
       <DialogTitle>
         <Box display="flex" alignItems="center">
           <CameraAlt sx={{ mr: 1 }} />
-          Scanner Help
+          ZXing Barcode Scanner Help
         </Box>
       </DialogTitle>
       <DialogContent>
         <Typography variant="h6" gutterBottom>
-          Barcode Scanner
+          Using ZXing Barcode Scanner
         </Typography>
 
         <List>
           <ListItem>
             <ListItemIcon>
               <Smartphone />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Supported Formats" 
+              secondary="Code 128, QR Code, UPC-A, EAN-8, EAN-13, Code 39, Code 93"
+            />
+          </ListItem>
+          
+          <ListItem>
+            <ListItemIcon>
+              <Videocam />
             </ListItemIcon>
             <ListItemText 
               primary="Camera Access" 
@@ -332,21 +447,11 @@ const Scanner = () => {
           
           <ListItem>
             <ListItemIcon>
-              <Videocam />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Good Lighting" 
-              secondary="Ensure the barcode is well-lit without glare"
-            />
-          </ListItem>
-          
-          <ListItem>
-            <ListItemIcon>
               <QrCodeScanner />
             </ListItemIcon>
             <ListItemText 
-              primary="Use HTTPS" 
-              secondary="Camera requires HTTPS. Use ngrok for local testing"
+              primary="Good Lighting" 
+              secondary="Ensure the barcode is well-lit without glare or shadows"
             />
           </ListItem>
 
@@ -355,16 +460,22 @@ const Scanner = () => {
               <Refresh />
             </ListItemIcon>
             <ListItemText 
-              primary="Manual Entry" 
-              secondary="Use the email autocomplete for quick manual entry"
+              primary="Switch Cameras" 
+              secondary="Use camera dropdown to switch between front and back cameras"
             />
           </ListItem>
         </List>
+
+        <Alert severity="info" sx={{ mt: 2 }}>
+          <Typography variant="body2">
+            <strong>ZXing Library:</strong> Powerful barcode scanning library used by many production applications.
+          </Typography>
+        </Alert>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setShowCameraHelp(false)}>Close</Button>
         <Button onClick={startScanner} variant="contained">
-          Try Scanner
+          Start Scanner
         </Button>
       </DialogActions>
     </Dialog>
@@ -373,27 +484,58 @@ const Scanner = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom align="center">
-        Barcode Scanner
+        Barcode Scanner (ZXing)
       </Typography>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Scanner Interface
-              </Typography>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6">
+                  Scanner Interface
+                </Typography>
+                {availableCameras.length > 1 && (
+                  <Autocomplete
+                    size="small"
+                    options={availableCameras}
+                    getOptionLabel={(option) => option.label || `Camera ${availableCameras.indexOf(option) + 1}`}
+                    value={availableCameras.find(cam => cam.deviceId === selectedCameraId) || null}
+                    onChange={(event, newValue) => {
+                      if (newValue) {
+                        switchCamera(newValue.deviceId);
+                      }
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Camera"
+                        size="small"
+                        sx={{ width: 200 }}
+                      />
+                    )}
+                  />
+                )}
+              </Box>
 
               {cameraError && (
-                <Alert severity="error" sx={{ mb: 2 }}>
+                <Alert severity="error" sx={{ mb: 2 }}
+                  action={
+                    <Button 
+                      size="small" 
+                      onClick={retryCamera}
+                      disabled={isLoading}
+                    >
+                      Retry
+                    </Button>
+                  }
+                >
                   {cameraError}
-                  <Button 
-                    size="small" 
-                    onClick={() => setShowCameraHelp(true)}
-                    sx={{ ml: 1 }}
-                  >
-                    Get Help
-                  </Button>
+                  {retryCount > 0 && (
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      Retry attempt: {retryCount}/3
+                    </Typography>
+                  )}
                 </Alert>
               )}
 
@@ -404,7 +546,16 @@ const Scanner = () => {
               )}
 
               {cameraPermission === 'denied' && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
+                <Alert severity="warning" sx={{ mb: 2 }}
+                  action={
+                    <Button 
+                      size="small" 
+                      onClick={() => setShowCameraHelp(true)}
+                    >
+                      Get Help
+                    </Button>
+                  }
+                >
                   Camera access denied. Please enable camera permissions in your browser settings.
                 </Alert>
               )}
@@ -441,53 +592,71 @@ const Scanner = () => {
                 )}
               </Box>
 
-              {/* Scanner Container */}
-              {isScanning && (
-                <Box sx={{ mb: 2, position: 'relative' }}>
-                  <video
-                    ref={videoRef}
-                    style={{ 
-                      width: '100%',
-                      height: '300px',
-                      border: '2px solid #1976d2',
-                      borderRadius: 1,
-                      backgroundColor: '#000'
-                    }}
-                    playsInline
-                    muted
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    style={{ display: 'none' }}
-                  />
-                  <Box 
-                    sx={{ 
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      width: '300px',
-                      height: '3px',
-                      backgroundColor: '#ff4444',
-                      opacity: 0.8,
-                      animation: 'scanLine 2s ease-in-out infinite'
-                    }}
-                  />
-                  <Typography 
-                    variant="body2" 
-                    align="center" 
-                    sx={{ 
-                      mt: 1, 
-                      color: 'white',
-                      backgroundColor: 'rgba(0,0,0,0.7)',
-                      py: 1,
-                      borderRadius: 1
-                    }}
-                  >
-                    📷 Point camera at Code 128 barcode
-                  </Typography>
+              {/* Scanner Container - Always in DOM but conditionally visible */}
+              <Box sx={{ 
+                mb: 2, 
+                position: 'relative',
+                display: isScanning ? 'block' : 'none'
+              }}>
+                <video
+                  ref={videoRef}
+                  style={{ 
+                    width: '100%',
+                    height: '300px',
+                    border: '2px solid #1976d2',
+                    borderRadius: 1,
+                    backgroundColor: '#000',
+                    objectFit: 'cover'
+                  }}
+                  playsInline
+                  muted
+                  onError={handleVideoError}
+                  onLoadedMetadata={() => {
+                    setScanDebug('Video stream loaded successfully');
+                  }}
+                />
+                <Box 
+                  sx={{ 
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '300px',
+                    height: '3px',
+                    backgroundColor: '#ff4444',
+                    opacity: 0.8,
+                    animation: 'scanLine 2s ease-in-out infinite'
+                  }}
+                />
+                <Box 
+                  sx={{ 
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    color: 'white',
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1,
+                    fontSize: '0.75rem'
+                  }}
+                >
+                  ZXing
                 </Box>
-              )}
+                <Typography 
+                  variant="body2" 
+                  align="center" 
+                  sx={{ 
+                    mt: 1, 
+                    color: 'white',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    py: 1,
+                    borderRadius: 1
+                  }}
+                >
+                  📷 Point camera at Code 128 barcode
+                </Typography>
+              </Box>
 
               {/* Debug Info */}
               {scanDebug && (
@@ -586,10 +755,19 @@ const Scanner = () => {
                   >
                     {loadingSuggestions ? 'Loading...' : 'Refresh List'}
                   </Button>
+
+                  <Button
+                    variant="outlined"
+                    onClick={getAvailableCameras}
+                    startIcon={<Refresh />}
+                    size="small"
+                  >
+                    Refresh Cameras
+                  </Button>
                 </Box>
 
                 <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
-                  {emailSuggestions.length} participants available
+                  {emailSuggestions.length} participants available • {availableCameras.length} cameras detected
                 </Typography>
               </Paper>
 
@@ -619,8 +797,39 @@ const Scanner = () => {
                 Participant Details
               </Typography>
 
-              {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-              {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+              {error && (
+                <Alert 
+                  severity="error" 
+                  sx={{ mb: 2 }}
+                  action={
+                    <IconButton
+                      size="small"
+                      onClick={() => setError('')}
+                    >
+                      <Close />
+                    </IconButton>
+                  }
+                >
+                  {error}
+                </Alert>
+              )}
+              
+              {success && (
+                <Alert 
+                  severity="success" 
+                  sx={{ mb: 2 }}
+                  action={
+                    <IconButton
+                      size="small"
+                      onClick={() => setSuccess('')}
+                    >
+                      <Close />
+                    </IconButton>
+                  }
+                >
+                  {success}
+                </Alert>
+              )}
 
               {participant ? (
                 <Box>
