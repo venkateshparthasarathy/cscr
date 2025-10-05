@@ -536,37 +536,7 @@ const Scanner = () => {
   return (
     <Box>
       {/* Enhanced Header */}
-      <Paper
-        sx={{
-          p: 4,
-          mb: 3,
-          textAlign: 'center',
-          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-          border: '1px solid #e2e8f0',
-          borderRadius: 3,
-          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        }}
-      >
-        <Typography 
-          variant="h3" 
-          gutterBottom 
-          fontWeight="700"
-          sx={{
-            background: 'linear-gradient(45deg, #2563eb, #7c3aed)',
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            color: 'transparent',
-            mb: 1,
-          }}
-        >
-          <QrCodeScanner sx={{ mr: 2, fontSize: 'inherit', verticalAlign: 'middle' }} />
-          Barcode Scanner
-        </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-          Scan participant barcodes or search manually
-        </Typography>
-       
-      </Paper>
+      
 
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
