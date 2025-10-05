@@ -8,22 +8,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use(cors({
-  origin: ['http://localhost:3000', 'https://cscr.vercel.app'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
 // MongoDB Atlas connection with your credentials
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://venkateshparthasarathyv_db_user:kXVKxy1cMjZkSsdE@foodcourt.whjpv5e.mongodb.net/foodcourt?retryWrites=true&w=majority';
 
-// Enhanced MongoDB connection with better error handling
+// FIXED: Remove deprecated options and add TLS workaround for Bun
 mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
+  // FIXED: Add TLS settings to prevent destructuring error
+  tls: true,
+  tlsAllowInvalidCertificates: false,
 })
 .then(() => {
   console.log('✅ Connected to MongoDB Atlas successfully');
@@ -383,7 +377,7 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// FIXED: 404 handler - removed the problematic '*' route
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
