@@ -233,11 +233,7 @@ const AdminLogin = ({ onLogin }) => {
                   fontWeight: '500',
                 }}
               >
-                <Security sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'text-bottom' }} />
-                Default Credentials: 
-                <Box component="span" sx={{ fontFamily: 'monospace', ml: 1, color: '#1e293b' }}>
-                  cscr / cscr123$@
-                </Box>
+                
               </Typography>
             </Paper>
           </CardContent>
