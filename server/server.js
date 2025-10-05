@@ -3,9 +3,17 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.use(cors({
+  origin: ['http://localhost:3000', 'https://cscr.vercel.app'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
 // MongoDB Atlas connection with your credentials
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://venkateshparthasarathyv_db_user:kXVKxy1cMjZkSsdE@foodcourt.whjpv5e.mongodb.net/foodcourt?retryWrites=true&w=majority';
