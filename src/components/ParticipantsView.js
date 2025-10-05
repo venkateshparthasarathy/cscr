@@ -125,54 +125,88 @@ const ParticipantsView = () => {
         </CardContent>
       </Card>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Mobile</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell align="center">Day 1 - Morning</TableCell>
-              <TableCell align="center">Day 1 - Lunch</TableCell>
-              <TableCell align="center">Day 1 - Evening</TableCell>
-              <TableCell align="center">Day 1 - Dinner</TableCell>
-              <TableCell align="center">Day 2 - Morning</TableCell>
-              <TableCell align="center">Day 2 - Lunch</TableCell>
-              <TableCell align="center">Day 2 - Evening</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredParticipants.map((participant) => (
-              <TableRow key={participant._id}>
-                <TableCell>{participant.name}</TableCell>
-                <TableCell>{participant.mobile}</TableCell>
-                <TableCell>{participant.email}</TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day1.morningSnack} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day1.lunch} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day1.eveningSnack} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day1.dinner} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day2.morningSnack} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day2.lunch} />
-                </TableCell>
-                <TableCell align="center">
-                  <MealStatus {...participant.meals.day2.eveningSnack} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+     <TableContainer 
+  component={Paper}
+  sx={{
+    borderRadius: 3,
+    border: '1px solid #e2e8f0',
+    overflow: 'hidden',
+    '& .MuiTableHead-root': {
+      background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+    },
+    '& .MuiTableCell-head': {
+      color: 'white',
+      fontWeight: 600,
+      fontSize: '0.9rem',
+    },
+    '& .MuiTableRow-root:nth-of-type(even)': {
+      backgroundColor: '#f8fafc',
+    },
+    '& .MuiTableRow-root:hover': {
+      backgroundColor: '#f1f5f9',
+    },
+  }}
+>
+  <Table>
+    <TableHead>
+      <TableRow>
+        <TableCell sx={{ color: 'white !important' }}>Name/Mobile/Email</TableCell>
+         <TableCell align="center" sx={{ color: 'white !important' }}>Day 1 - Morning</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 1 - Lunch</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 1 - Evening</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 1 - Dinner</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 2 - Morning</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 2 - Lunch</TableCell>
+        <TableCell align="center" sx={{ color: 'white !important' }}>Day 2 - Evening</TableCell>
+      </TableRow>
+    </TableHead>
+
+    <TableBody>
+      {filteredParticipants.map((participant) => (
+        <TableRow 
+          key={participant._id}
+          sx={{ 
+            transition: 'all 0.2s ease-in-out',
+            '&:last-child td, &:last-child th': { border: 0 },
+          }}
+        >
+          <TableCell>
+            <Typography variant="subtitle2" fontWeight="600">
+              {participant.name}<br/>
+               {participant.email}<br/>
+               {participant.mobile}    
+               </Typography>
+          </TableCell>
+         
+                   
+          {/* Meals */}
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day1.morningSnack} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day1.lunch} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day1.eveningSnack} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day1.dinner} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day2.morningSnack} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day2.lunch} />
+          </TableCell>
+          <TableCell align="center">
+            <MealStatus {...participant.meals.day2.eveningSnack} />
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  </Table>
+</TableContainer>
+
 
       {filteredParticipants.length === 0 && (
         <Typography align="center" sx={{ mt: 3 }} color="textSecondary">
