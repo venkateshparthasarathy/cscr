@@ -21,9 +21,24 @@ import {
   TextField,
   Autocomplete,
   MenuItem,
-  IconButton
+  IconButton,
+  Fade,
+  LinearProgress
 } from '@mui/material';
-import { CheckCircle, Cancel, QrCodeScanner, CameraAlt, Videocam, Smartphone, Close, Refresh } from '@mui/icons-material';
+import { 
+  CheckCircle, 
+  Cancel, 
+  QrCodeScanner, 
+  CameraAlt, 
+  Videocam, 
+  Smartphone, 
+  Close, 
+  Refresh,
+  Search,
+  Person,
+  Email,
+  Phone
+} from '@mui/icons-material';
 import axios from 'axios';
 
 // Import ZXing library
@@ -326,7 +341,7 @@ const Scanner = () => {
     
     if (emailRegex.test(cleanText)) {
       setScanResult(cleanText);
-      setSuccess('Barcode scanned successfully!');
+      setSuccess('🎉 Barcode scanned successfully!');
       setTimeout(() => setSuccess(''), 3000);
       checkParticipant(cleanText);
       stopScanner();
@@ -379,7 +394,7 @@ const Scanner = () => {
         { headers: getAuthHeader() }
       );
       setParticipant(response.data);
-      setSuccess(`${mealType} marked as consumed!`);
+      setSuccess(`✅ ${mealType} marked as consumed!`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       setError('Error updating meal status: ' + (error.response?.data?.message || error.message));
@@ -403,78 +418,115 @@ const Scanner = () => {
         onClick={() => markMealConsumed(day, mealType)}
         disabled={meal.consumed || !participant || isLoading}
         fullWidth
-        sx={{ mb: 1 }}
+        sx={{ 
+          mb: 1,
+          py: 1.5,
+          borderRadius: 2,
+          fontSize: '1rem',
+          fontWeight: 600,
+          transition: 'all 0.2s ease-in-out',
+          '&:hover': {
+            transform: meal.consumed ? 'none' : 'translateY(-2px)',
+            boxShadow: meal.consumed ? 'none' : '0 4px 12px rgba(37, 99, 235, 0.2)',
+          },
+        }}
         startIcon={isLoading ? <CircularProgress size={20} /> : null}
       >
-        {meal.consumed ? `${label} ✓` : label}
+        {meal.consumed ? `✅ ${label}` : label}
       </Button>
     );
   };
 
   const CameraHelpDialog = () => (
-    <Dialog open={showCameraHelp} onClose={() => setShowCameraHelp(false)} maxWidth="sm" fullWidth>
+    <Dialog 
+      open={showCameraHelp} 
+      onClose={() => setShowCameraHelp(false)} 
+      maxWidth="sm" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+        }
+      }}
+    >
       <DialogTitle>
-        <Box display="flex" alignItems="center">
+        <Box display="flex" alignItems="center" sx={{ color: '#2563eb' }}>
           <CameraAlt sx={{ mr: 1 }} />
-          ZXing Barcode Scanner Help
+          <Typography variant="h5" fontWeight="600">
+            ZXing Barcode Scanner Help
+          </Typography>
         </Box>
       </DialogTitle>
       <DialogContent>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ color: '#374151', mt: 1 }}>
           Using ZXing Barcode Scanner
         </Typography>
 
         <List>
-          <ListItem>
+          <ListItem sx={{ px: 0 }}>
             <ListItemIcon>
-              <Smartphone />
+              <Smartphone sx={{ color: '#2563eb' }} />
             </ListItemIcon>
             <ListItemText 
               primary="Supported Formats" 
               secondary="Code 128, QR Code, UPC-A, EAN-8, EAN-13, Code 39, Code 93"
+              primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
           
-          <ListItem>
+          <ListItem sx={{ px: 0 }}>
             <ListItemIcon>
-              <Videocam />
+              <Videocam sx={{ color: '#2563eb' }} />
             </ListItemIcon>
             <ListItemText 
               primary="Camera Access" 
               secondary="Ensure you allow camera permissions when prompted"
+              primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
           
-          <ListItem>
+          <ListItem sx={{ px: 0 }}>
             <ListItemIcon>
-              <QrCodeScanner />
+              <QrCodeScanner sx={{ color: '#2563eb' }} />
             </ListItemIcon>
             <ListItemText 
               primary="Good Lighting" 
               secondary="Ensure the barcode is well-lit without glare or shadows"
+              primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
 
-          <ListItem>
+          <ListItem sx={{ px: 0 }}>
             <ListItemIcon>
-              <Refresh />
+              <Refresh sx={{ color: '#2563eb' }} />
             </ListItemIcon>
             <ListItemText 
               primary="Switch Cameras" 
               secondary="Use camera dropdown to switch between front and back cameras"
+              primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
         </List>
 
-        <Alert severity="info" sx={{ mt: 2 }}>
+        <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
           <Typography variant="body2">
             <strong>ZXing Library:</strong> Powerful barcode scanning library used by many production applications.
           </Typography>
         </Alert>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={() => setShowCameraHelp(false)}>Close</Button>
-        <Button onClick={startScanner} variant="contained">
+      <DialogActions sx={{ p: 3, pt: 0 }}>
+        <Button 
+          onClick={() => setShowCameraHelp(false)}
+          sx={{ borderRadius: 2 }}
+        >
+          Close
+        </Button>
+        <Button 
+          onClick={startScanner} 
+          variant="contained"
+          sx={{ borderRadius: 2 }}
+        >
           Start Scanner
         </Button>
       </DialogActions>
@@ -483,48 +535,81 @@ const Scanner = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom align="center">
-        Barcode Scanner (ZXing)
-      </Typography>
+      {/* Enhanced Header */}
+      <Paper
+        sx={{
+          p: 4,
+          mb: 3,
+          textAlign: 'center',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+          border: '1px solid #e2e8f0',
+          borderRadius: 3,
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        }}
+      >
+        <Typography 
+          variant="h3" 
+          gutterBottom 
+          fontWeight="700"
+          sx={{
+            background: 'linear-gradient(45deg, #2563eb, #7c3aed)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            color: 'transparent',
+            mb: 1,
+          }}
+        >
+          <QrCodeScanner sx={{ mr: 2, fontSize: 'inherit', verticalAlign: 'middle' }} />
+          Barcode Scanner
+        </Typography>
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+          Scan participant barcodes or search manually
+        </Typography>
+       
+      </Paper>
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6">
+        <Grid item xs={12} lg={6}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              overflow: 'hidden',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              {/* Enhanced Scanner Header */}
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  mb: 3,
+                  pb: 2,
+                  borderBottom: '2px solid #f1f5f9'
+                }}
+              >
+                <Typography variant="h5" fontWeight="600" color="primary">
                   Scanner Interface
                 </Typography>
-                {availableCameras.length > 1 && (
-                  <Autocomplete
-                    size="small"
-                    options={availableCameras}
-                    getOptionLabel={(option) => option.label || `Camera ${availableCameras.indexOf(option) + 1}`}
-                    value={availableCameras.find(cam => cam.deviceId === selectedCameraId) || null}
-                    onChange={(event, newValue) => {
-                      if (newValue) {
-                        switchCamera(newValue.deviceId);
-                      }
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label="Camera"
-                        size="small"
-                        sx={{ width: 200 }}
-                      />
-                    )}
-                  />
-                )}
+              
               </Box>
 
               {cameraError && (
-                <Alert severity="error" sx={{ mb: 2 }}
+                <Alert 
+                  severity="error" 
+                  sx={{ 
+                    mb: 2,
+                    borderRadius: 2,
+                    alignItems: 'center',
+                  }}
                   action={
                     <Button 
                       size="small" 
                       onClick={retryCamera}
                       disabled={isLoading}
+                      sx={{ fontWeight: 600 }}
                     >
                       Retry
                     </Button>
@@ -540,17 +625,18 @@ const Scanner = () => {
               )}
 
               {!isCameraSupported && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
+                <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
                   Camera not supported in this browser. Please use Chrome, Firefox, or Safari.
                 </Alert>
               )}
 
               {cameraPermission === 'denied' && (
-                <Alert severity="warning" sx={{ mb: 2 }}
+                <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}
                   action={
                     <Button 
                       size="small" 
                       onClick={() => setShowCameraHelp(true)}
+                      sx={{ fontWeight: 600 }}
                     >
                       Get Help
                     </Button>
@@ -558,6 +644,35 @@ const Scanner = () => {
                 >
                   Camera access denied. Please enable camera permissions in your browser settings.
                 </Alert>
+              )}
+              
+              {/* Camera Selection */}
+              {availableCameras.length > 1 && (
+                <Box sx={{ mb: 2 }}>
+                  <Autocomplete
+                    size="small"
+                    options={availableCameras}
+                    getOptionLabel={(option) => option.label || `Camera ${availableCameras.indexOf(option) + 1}`}
+                    value={availableCameras.find(cam => cam.deviceId === selectedCameraId) || null}
+                    onChange={(event, newValue) => {
+                      if (newValue) {
+                        switchCamera(newValue.deviceId);
+                      }
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Select Camera"
+                        size="small"
+                        sx={{ 
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                          }
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
               )}
               
               <Box sx={{ mb: 2 }}>
@@ -569,10 +684,23 @@ const Scanner = () => {
                     disabled={isLoading || !isCameraSupported}
                     fullWidth
                     size="large"
+                    sx={{
+                      py: 1.5,
+                      borderRadius: 2,
+                      background: 'linear-gradient(45deg, #2563eb, #7c3aed)',
+                      fontSize: '1.1rem',
+                      fontWeight: '600',
+                      boxShadow: '0 4px 6px -1px rgb(37 99 235 / 0.3)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #1d4ed8, #5b21b6)',
+                        boxShadow: '0 6px 20px -1px rgb(37 99 235 / 0.4)',
+                        transform: 'translateY(-1px)',
+                      },
+                    }}
                   >
                     {isLoading ? (
                       <Box display="flex" alignItems="center">
-                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                        <CircularProgress size={20} sx={{ mr: 1, color: 'white' }} />
                         Starting Scanner...
                       </Box>
                     ) : (
@@ -586,27 +714,41 @@ const Scanner = () => {
                     onClick={stopScanner}
                     fullWidth
                     color="error"
+                    size="large"
+                    sx={{
+                      py: 1.5,
+                      borderRadius: 2,
+                      fontSize: '1.1rem',
+                      fontWeight: '600',
+                      borderWidth: 2,
+                      '&:hover': {
+                        borderWidth: 2,
+                        transform: 'translateY(-1px)',
+                      },
+                    }}
                   >
                     Stop Scanner
                   </Button>
                 )}
               </Box>
 
-              {/* Scanner Container - Always in DOM but conditionally visible */}
+              {/* Scanner Container */}
               <Box sx={{ 
                 mb: 2, 
                 position: 'relative',
-                display: isScanning ? 'block' : 'none'
+                display: isScanning ? 'block' : 'none',
+                borderRadius: 2,
+                overflow: 'hidden',
+                border: '2px solid #2563eb',
               }}>
                 <video
                   ref={videoRef}
                   style={{ 
                     width: '100%',
                     height: '300px',
-                    border: '2px solid #1976d2',
-                    borderRadius: 1,
                     backgroundColor: '#000',
-                    objectFit: 'cover'
+                    objectFit: 'cover',
+                    display: 'block'
                   }}
                   playsInline
                   muted
@@ -638,7 +780,8 @@ const Scanner = () => {
                     px: 1,
                     py: 0.5,
                     borderRadius: 1,
-                    fontSize: '0.75rem'
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
                   }}
                 >
                   ZXing
@@ -647,11 +790,14 @@ const Scanner = () => {
                   variant="body2" 
                   align="center" 
                   sx={{ 
-                    mt: 1, 
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
                     color: 'white',
                     backgroundColor: 'rgba(0,0,0,0.7)',
                     py: 1,
-                    borderRadius: 1
+                    fontWeight: '600',
                   }}
                 >
                   📷 Point camera at Code 128 barcode
@@ -660,17 +806,28 @@ const Scanner = () => {
 
               {/* Debug Info */}
               {scanDebug && (
-                <Paper sx={{ p: 1, mb: 2, backgroundColor: '#f5f5f5' }}>
-                  <Typography variant="caption" color="textSecondary">
-                    Debug: {scanDebug}
+                <Paper sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc', borderRadius: 2 }}>
+                  <Typography variant="caption" color="textSecondary" fontWeight="500">
+                    🔍 Debug: {scanDebug}
                   </Typography>
                 </Paper>
               )}
 
               {/* Manual Entry with Autocomplete */}
-              <Paper sx={{ p: 2, textAlign: 'center', mt: 2 }}>
+              <Paper sx={{ 
+                p: 3, 
+                textAlign: 'center', 
+                mt: 2,
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                border: '1px solid #e2e8f0',
+                borderRadius: 2,
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#374151' }}>
+                  <Search sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Manual Search
+                </Typography>
                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                  Manual Entry with Suggestions:
+                  Search participants by email or name
                 </Typography>
                 
                 <Box sx={{ mb: 2 }}>
@@ -683,11 +840,17 @@ const Scanner = () => {
                     renderOption={(props, option) => (
                       <MenuItem {...props}>
                         <Box>
-                          <Typography variant="body1">
+                          <Typography variant="body1" fontWeight="600">
+                            <Person sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                            {option.name}
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ ml: 3 }}>
+                            <Email sx={{ fontSize: 12, mr: 0.5, verticalAlign: 'middle' }} />
                             {option.label}
                           </Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            {option.name} • {option.mobile}
+                          <Typography variant="caption" color="textSecondary" sx={{ ml: 2 }}>
+                            <Phone sx={{ fontSize: 12, mr: 0.5, verticalAlign: 'middle' }} />
+                            {option.mobile}
                           </Typography>
                         </Box>
                       </MenuItem>
@@ -707,11 +870,17 @@ const Scanner = () => {
                     renderInput={(params) => (
                       <TextField
                         {...params}
-                        placeholder="Type email or select from suggestions"
-                        size="small"
+                        placeholder="Type email or name to search..."
+                        size="medium"
                         fullWidth
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                          },
+                        }}
                         InputProps={{
                           ...params.InputProps,
+                          startAdornment: <Search sx={{ mr: 1, color: '#64748b' }} />,
                           endAdornment: (
                             <React.Fragment>
                               {loadingSuggestions ? (
@@ -723,7 +892,7 @@ const Scanner = () => {
                         }}
                       />
                     )}
-                    sx={{ mb: 1 }}
+                    sx={{ mb: 2 }}
                   />
                   
                   <Button
@@ -731,6 +900,11 @@ const Scanner = () => {
                     onClick={() => handleManualSubmit()}
                     disabled={!manualEmail || !manualEmail.includes('@')}
                     fullWidth
+                    sx={{
+                      py: 1,
+                      borderRadius: 2,
+                      fontWeight: '600',
+                    }}
                   >
                     Search Participant
                   </Button>
@@ -742,6 +916,7 @@ const Scanner = () => {
                     onClick={() => setShowCameraHelp(true)}
                     startIcon={<CameraAlt />}
                     size="small"
+                    sx={{ borderRadius: 2 }}
                   >
                     Scanner Help
                   </Button>
@@ -752,6 +927,7 @@ const Scanner = () => {
                     startIcon={<Refresh />}
                     size="small"
                     disabled={loadingSuggestions}
+                    sx={{ borderRadius: 2 }}
                   >
                     {loadingSuggestions ? 'Loading...' : 'Refresh List'}
                   </Button>
@@ -761,6 +937,7 @@ const Scanner = () => {
                     onClick={getAvailableCameras}
                     startIcon={<Refresh />}
                     size="small"
+                    sx={{ borderRadius: 2 }}
                   >
                     Refresh Cameras
                   </Button>
@@ -783,6 +960,7 @@ const Scanner = () => {
                       setError('');
                     }}
                     deleteIcon={<Close />}
+                    sx={{ fontWeight: '600' }}
                   />
                 </Box>
               )}
@@ -790,17 +968,28 @@ const Scanner = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
+        <Grid item xs={12} lg={6}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              overflow: 'hidden',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h5" gutterBottom fontWeight="600" color="primary">
                 Participant Details
               </Typography>
-
+              
               {error && (
                 <Alert 
                   severity="error" 
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    borderRadius: 2,
+                    alignItems: 'center',
+                  }}
                   action={
                     <IconButton
                       size="small"
@@ -817,7 +1006,11 @@ const Scanner = () => {
               {success && (
                 <Alert 
                   severity="success" 
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    borderRadius: 2,
+                    alignItems: 'center',
+                  }}
                   action={
                     <IconButton
                       size="small"
@@ -832,31 +1025,141 @@ const Scanner = () => {
               )}
 
               {participant ? (
-                <Box>
-                  <Typography variant="subtitle1" gutterBottom>
-                    <strong>Participant Information</strong>
-                  </Typography>
-                  <Typography><strong>Name:</strong> {participant.name}</Typography>
-                  <Typography><strong>Mobile:</strong> {participant.mobile}</Typography>
-                  <Typography><strong>Email:</strong> {participant.email}</Typography>
-                  
-                  <Box sx={{ mt: 3 }}>
-                    <Typography variant="h6" gutterBottom>Day 1 Meals</Typography>
-                    <MealButton day="day1" mealType="morningSnack" label="Morning Snack" />
-                    <MealButton day="day1" mealType="lunch" label="Lunch" />
-                    <MealButton day="day1" mealType="eveningSnack" label="Evening Snack" />
-                    <MealButton day="day1" mealType="dinner" label="Dinner" />
+                <Fade in={true} timeout={500}>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                      border: '2px solid #bae6fd',
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom color="primary" fontWeight="600">
+                      🎯 Participant Information
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 2, mb: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Person sx={{ color: '#2563eb' }} />
+                        <Typography><strong>Name:</strong> {participant.name}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Phone sx={{ color: '#2563eb' }} />
+                        <Typography><strong>Mobile:</strong> {participant.mobile}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Email sx={{ color: '#2563eb' }} />
+                        <Typography><strong>Email:</strong> {participant.email}</Typography>
+                      </Box>
+                    </Box>
+                    
+                    {/* Enhanced Meal Sections */}
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" gutterBottom sx={{ 
+                        color: '#2563eb',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }}>
+                        <Box 
+                          component="span" 
+                          sx={{ 
+                            background: '#2563eb',
+                            color: 'white',
+                            borderRadius: '50%',
+                            width: 24,
+                            height: 24,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.8rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          1
+                        </Box>
+                        Day 1 Meals
+                      </Typography>
+                      <Box sx={{ display: 'grid', gap: 1 }}>
+                        <MealButton day="day1" mealType="morningSnack" label="☕ Morning Snack" />
+                        <MealButton day="day1" mealType="lunch" label="🍽️ Lunch" />
+                        <MealButton day="day1" mealType="eveningSnack" label="🍪 Evening Snack" />
+                        <MealButton day="day1" mealType="dinner" label="🌙 Dinner" />
+                      </Box>
+                    </Box>
 
-                    <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Day 2 Meals</Typography>
-                    <MealButton day="day2" mealType="morningSnack" label="Morning Snack" />
-                    <MealButton day="day2" mealType="lunch" label="Lunch" />
-                    <MealButton day="day2" mealType="eveningSnack" label="Evening Snack" />
-                  </Box>
-                </Box>
+                    <Box>
+                      <Typography variant="h6" gutterBottom sx={{ 
+                        color: '#7c3aed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }}>
+                        <Box 
+                          component="span" 
+                          sx={{ 
+                            background: '#7c3aed',
+                            color: 'white',
+                            borderRadius: '50%',
+                            width: 24,
+                            height: 24,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.8rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          2
+                        </Box>
+                        Day 2 Meals
+                      </Typography>
+                      <Box sx={{ display: 'grid', gap: 1 }}>
+                        <MealButton day="day2" mealType="morningSnack" label="☕ Morning Snack" />
+                        <MealButton day="day2" mealType="lunch" label="🍽️ Lunch" />
+                        <MealButton day="day2" mealType="eveningSnack" label="🍪 Evening Snack" />
+                      </Box>
+                    </Box>
+
+                    {/* Meal Summary */}
+                    <Box sx={{ mt: 3, p: 2, background: 'white', borderRadius: 2, border: '1px solid #e2e8f0' }}>
+                      <Typography variant="subtitle2" gutterBottom fontWeight="600">
+                        Meal Consumption Summary
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip 
+                          label={`Day 1: ${Object.values(participant.meals.day1).filter(meal => meal.consumed).length}/4 meals`}
+                          color="primary" 
+                          variant="outlined"
+                          sx={{ fontWeight: '600' }}
+                        />
+                        <Chip 
+                          label={`Day 2: ${Object.values(participant.meals.day2).filter(meal => meal.consumed).length}/3 meals`}
+                          color="secondary" 
+                          variant="outlined"
+                          sx={{ fontWeight: '600' }}
+                        />
+                      </Box>
+                    </Box>
+                  </Paper>
+                </Fade>
               ) : (
-                <Typography color="textSecondary">
-                  Scan a barcode or enter email to view participant details
-                </Typography>
+                <Paper
+                  sx={{
+                    p: 4,
+                    textAlign: 'center',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                    border: '2px dashed #cbd5e1',
+                    borderRadius: 2,
+                  }}
+                >
+                  <QrCodeScanner sx={{ fontSize: 48, color: '#94a3b8', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No Participant Selected
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Scan a barcode or search for a participant to view details
+                  </Typography>
+                </Paper>
               )}
             </CardContent>
           </Card>
