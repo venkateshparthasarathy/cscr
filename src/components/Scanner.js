@@ -229,14 +229,14 @@ const Scanner = () => {
           
           if (error && !(error instanceof NotFoundException)) {
             console.log('ZXing scan error:', error);
-            setScanDebug(`Scanning... ${error.message || 'Looking for barcode'}`);
+            setScanDebug(`Scanning... ${error.message || 'Looking for QR code'}`);
           }
         }
       );
 
       setIsScanning(true);
       setCameraPermission('granted');
-      setScanDebug('Scanner started. Point camera at barcode...');
+      setScanDebug('Scanner started. Point camera at QR code...');
       setRetryCount(0); // Reset retry count on success
 
     } catch (err) {
@@ -333,7 +333,7 @@ const Scanner = () => {
   };
 
   const handleScanResult = (decodedText) => {
-    console.log('Barcode scanned:', decodedText);
+    console.log('QR code scanned:', decodedText);
     
     // Clean and validate the scanned result
     const cleanText = decodedText.trim();
@@ -343,12 +343,12 @@ const Scanner = () => {
     
     if (emailRegex.test(cleanText)) {
       setScanResult(cleanText);
-      setSuccess('🎉 Barcode scanned successfully!');
+      setSuccess('🎉 QR code scanned successfully!');
       setTimeout(() => setSuccess(''), 3000);
       checkParticipant(cleanText);
       stopScanner();
     } else {
-      setError('Scanned code is not a valid email address');
+      setError('Scanned QR code does not contain a valid email address');
       setScanDebug(`Invalid format: ${cleanText}`);
     }
   };
@@ -456,13 +456,13 @@ const Scanner = () => {
         <Box display="flex" alignItems="center" sx={{ color: '#2563eb' }}>
           <CameraAlt sx={{ mr: 1 }} />
           <Typography variant="h5" fontWeight="600">
-            ZXing Barcode Scanner Help
+            QR Code Scanner Help
           </Typography>
         </Box>
       </DialogTitle>
       <DialogContent>
         <Typography variant="h6" gutterBottom sx={{ color: '#374151', mt: 1 }}>
-          Using ZXing Barcode Scanner
+          Using QR Code Scanner
         </Typography>
 
         <List>
@@ -471,8 +471,8 @@ const Scanner = () => {
               <Smartphone sx={{ color: '#2563eb' }} />
             </ListItemIcon>
             <ListItemText 
-              primary="Supported Formats" 
-              secondary="Code 128, QR Code, UPC-A, EAN-8, EAN-13, Code 39, Code 93"
+              primary="QR Code Format" 
+              secondary="Scans standard QR codes containing email addresses"
               primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
@@ -494,7 +494,7 @@ const Scanner = () => {
             </ListItemIcon>
             <ListItemText 
               primary="Good Lighting" 
-              secondary="Ensure the barcode is well-lit without glare or shadows"
+              secondary="Ensure the QR code is well-lit and clearly visible"
               primaryTypographyProps={{ fontWeight: 600 }}
             />
           </ListItem>
@@ -513,7 +513,7 @@ const Scanner = () => {
 
         <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
           <Typography variant="body2">
-            <strong>ZXing Library:</strong> Powerful barcode scanning library used by many production applications.
+            <strong>QR Code Requirement:</strong> QR codes should contain valid email addresses for participant lookup.
           </Typography>
         </Alert>
       </DialogContent>
@@ -560,7 +560,7 @@ const Scanner = () => {
                 }}
               >
                 <Typography variant="h5" fontWeight="600" color="primary">
-                  Scanner Interface
+                  QR Code Scanner
                 </Typography>
               
               </Box>
@@ -673,7 +673,7 @@ const Scanner = () => {
                         Starting Scanner...
                       </Box>
                     ) : (
-                      'Start Barcode Scanner'
+                      'Start QR Code Scanner'
                     )}
                   </Button>
                 ) : (
@@ -732,11 +732,11 @@ const Scanner = () => {
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    width: '300px',
-                    height: '3px',
-                    backgroundColor: '#ff4444',
+                    width: '200px',
+                    height: '200px',
+                    border: '2px solid #ff4444',
                     opacity: 0.8,
-                    animation: 'scanLine 2s ease-in-out infinite'
+                    borderRadius: '10px'
                   }}
                 />
                 <Box 
@@ -753,7 +753,7 @@ const Scanner = () => {
                     fontWeight: '600',
                   }}
                 >
-                  ZXing
+                  QR Scanner
                 </Box>
                 <Typography 
                   variant="body2" 
@@ -769,7 +769,7 @@ const Scanner = () => {
                     fontWeight: '600',
                   }}
                 >
-                  📷 Point camera at Code 128 barcode
+                  📷 Point camera at QR code
                 </Typography>
               </Box>
 
@@ -1126,7 +1126,7 @@ const Scanner = () => {
                     No Participant Selected
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Scan a barcode or search for a participant to view details
+                    Scan a QR code or search for a participant to view details
                   </Typography>
                 </Paper>
               )}
@@ -1136,17 +1136,6 @@ const Scanner = () => {
       </Grid>
 
       <CameraHelpDialog />
-
-      {/* Add CSS for scanner animation */}
-      <style>
-        {`
-          @keyframes scanLine {
-            0% { transform: translate(-50%, -200%); }
-            50% { transform: translate(-50%, 200%); }
-            100% { transform: translate(-50%, -200%); }
-          }
-        `}
-      </style>
     </Box>
   );
 };
