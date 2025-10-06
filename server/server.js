@@ -15,8 +15,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
-// Handle preflight requests explicitly for mobile
-app.options('*', cors());
+// FIXED: Handle preflight requests without wildcard route
+app.options(/^\/api\/.*$/, cors());
+
+ // Specific API routes only
 
 app.use(express.json());
 
@@ -175,7 +177,7 @@ const authenticateAdmin = async (req, res, next) => {
   }
 };
 
-// ==================== MOBILE-OPTIMIZED ROUTES ====================
+// ==================== ROUTES ====================
 
 // Health check route with mobile info
 app.get('/api/health', (req, res) => {
@@ -296,8 +298,6 @@ app.put('/api/mobile/participant/:email/meal', async (req, res) => {
     });
   }
 });
-
-// ==================== EXISTING ROUTES (UPDATED FOR MOBILE) ====================
 
 // Public routes
 app.get('/api/participant/:email', async (req, res) => {
@@ -564,7 +564,7 @@ app.get('/api/stats', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Mobile network info endpoint
+// Network info endpoint
 app.get('/api/network-info', (req, res) => {
   const networkInterfaces = os.networkInterfaces();
   const ipAddresses = [];
@@ -603,8 +603,8 @@ app.use((error, req, res, next) => {
 });
 
 // 404 handler with mobile support
-app.use((req, res) => {
-  res.status(404).json({ 
+app.use(/^\/api\/.*$/, (req, res) => {
+  res.status(404).json({
     error: 'Route not found',
     mobileFriendly: true,
     code: 'ROUTE_NOT_FOUND',
@@ -618,6 +618,8 @@ app.use((req, res) => {
     ]
   });
 });
+
+
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
